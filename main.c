@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/timeb.h>
 #include <time.h>
 
 #define PORT 10001
@@ -27,39 +28,45 @@ void client() {
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     inet_pton(AF_INET, host, &addr.sin_addr);
-    const int sock = hErr(socket(AF_INET, SOCK_STREAM, 0), "SOCKET");
-    hErr(connect(sock, (struct sockaddr*)&addr, sizeof(addr)), "CONNECT");
+    const int sock = hErr(socket(AF_INET, SOCK_STREAM, 0), "cSOCKET");
+    hErr(connect(sock, (struct sockaddr*)&addr, sizeof(addr)), "cCONNECT");
     char bufor[16] = "r";
-    hErr(send(sock, bufor, 1, 0)-1, "SEND");
+    hErr(send(sock, bufor, 1, 0)-1, "cSEND");
     do {
-        hErr(recv(sock, bufor, sizeof(bufor), 0)-1, "RECV");
+        hErr(recv(sock, bufor, sizeof(bufor), 0)-1, "cRECV");
         printf("%s\n", bufor);
     }while(bufor[0]!='R');
     struct timespec tx={0,0}, tz={0,0};
-    time_t ty;
+    struct timeb txs, ty;
     bufor[0] = 'p';
     clock_gettime(CLOCK_MONOTONIC, &tx);
-    hErr(send(sock, bufor, 1, 0)-1, "SEND");
+    hErr(ftime(&txs), "cFTIME");
+    hErr(send(sock, bufor, 1, 0)-1, "cSEND");
     do {
-        hErr(recv(sock, bufor, sizeof(bufor), 0)-1, "RECV");
+        hErr(recv(sock, bufor, sizeof(bufor), 0)-1, "cRECV");
         printf("%s\n", bufor);
     }while(bufor[0]!='P');
     clock_gettime(CLOCK_MONOTONIC, &tz);
     bufor[0] = 't';
-    hErr(send(sock, bufor, 1, 0)-1, "SEND");
+    hErr(send(sock, bufor, 1, 0)-1, "cSEND");
     do {
-        hErr(recv(sock, bufor, sizeof(bufor), 0)-1, "RECV");
+        hErr(recv(sock, bufor, sizeof(bufor), 0)-1, "cRECV");
         printf("%s\n", bufor);
     }while(bufor[0]!='T');
-    hErr(recv(sock, &ty, sizeof(time_t), 0)-sizeof(time_t), "time_t RECV");
+    hErr(recv(sock, &ty.time, sizeof(time_t), 0)-sizeof(time_t), "time_t cRECV");
+    hErr(recv(sock, &ty.millitm, sizeof(unsigned short), 0)-sizeof(unsigned short), "ntime_t cRECV");
     bufor[0] = 'c';
-    hErr(send(sock, bufor, 1, 0)-1, "SEND");
+    hErr(send(sock, bufor, 1, 0)-1, "cSEND");
     do {
-        hErr(recv(sock, bufor, sizeof(bufor), 0)-1, "RECV");
+        hErr(recv(sock, bufor, sizeof(bufor), 0)-1, "cRECV");
         printf("%s\n", bufor);
     }while(bufor[0]!='C');
-    hErr(shutdown(sock, SHUT_RDWR), "SHUTDOWN");
-    printf("%li %li\n%li %li\n%li\n", tx.tv_sec, tx.tv_nsec, tz.tv_sec, tz.tv_nsec, ty);
+    hErr(shutdown(sock, SHUT_RDWR), "cSHUTDOWN");
+    double d = ((tz.tv_sec-tx.tv_sec)+1e-9*(tz.tv_nsec-tx.tv_nsec))/2;
+    double lty = (txs.time+1e-9*txs.millitm)+d;
+    double rty = (ty.time+1e-9*ty.millitm);
+    double delta = rty - lty;
+    printf("tx = %li.%09li\ntz = %li.%09li\ndelta = %.6f +-%.6f ms\n", tx.tv_sec, tx.tv_nsec, tz.tv_sec, tz.tv_nsec, delta*1000, d*1000);
 }
 
 void server() {
@@ -68,27 +75,32 @@ void server() {
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     addr.sin_addr.s_addr = htons( INADDR_ANY );
-    const int sock = hErr(socket(AF_INET, SOCK_STREAM, 0), "SOCKET");
+    const int sock = hErr(socket(AF_INET, SOCK_STREAM, 0), "sSOCKET");
     int true = 1;
     setsockopt(sock,SOL_SOCKET,SO_REUSEADDR,&true,sizeof(int));
-    hErr(bind(sock, (struct sockaddr*) &addr, sizeof(addr)), "BIND");
-    hErr(listen(sock, MAX_CONNECTION), "LISTEN");
-    socklen_t len;
-    struct sockaddr_in client = {};
-    int csock = hErr(accept(sock, (struct sockaddr*) &client, &len), "ACCEPT");
-    char bufor[16];
-    time_t ty;
-    do {
-        hErr(recv(csock, bufor, sizeof( bufor ), 0)-1, "RECV");
-        if(bufor[0]=='p')
-            time(&ty);
-        bufor[0] += 'A' - 'a';
-        hErr(send(csock, bufor, 1, 0)-1, "SEND");
-        if(bufor[0]=='T')
-            hErr(send(csock, &ty, sizeof(time_t), 0)-sizeof(time_t), "SEND");
-        printf("%s\n", bufor);
-    }while(bufor[0]!='C');
-    hErr(shutdown(sock, SHUT_RDWR), "SHUTDOWN");
+    hErr(bind(sock, (struct sockaddr*) &addr, sizeof(addr)), "sBIND");
+    hErr(listen(sock, MAX_CONNECTION), "sLISTEN");
+    while(1) {
+        socklen_t len;
+        struct sockaddr_in client = {};
+        int csock = hErr(accept(sock, (struct sockaddr*) &client, &len), "sACCEPT");
+        char bufor[16];
+        struct timeb ty;
+        do {
+            hErr(recv(csock, bufor, sizeof( bufor ), 0)-1, "sRECV");
+            if(bufor[0]=='p')
+                ftime(&ty);
+            bufor[0] += 'A' - 'a';
+            hErr(send(csock, bufor, 1, 0)-1, "sSEND");
+            if(bufor[0]=='T') {
+                hErr(send(csock, &ty.time, sizeof(time_t), 0)-sizeof(time_t), "time_t sSEND");
+                hErr(send(csock, &ty.millitm, sizeof(unsigned short), 0)-sizeof(unsigned short), "ntime_t sSEND");
+            }
+            printf("%s\n", bufor);
+        }while(bufor[0]!='C');
+        hErr(shutdown(csock, SHUT_RDWR), "sSHUTDOWN");
+    }
+    hErr(shutdown(sock, SHUT_RDWR), "sSHUTDOWN");
 }
 
 int main(int argc, char* argv[]) {
