@@ -44,58 +44,52 @@ void nconnect(nsock sock, const char *name, unsigned short port) {
     hErr(connect(sock, (struct sockaddr*)&addr, sizeof(addr)), "nCONNECT");
     
 }
-void nsendm(nsock sock, void* msg, size_t how_many) {
+void nsend(nsock sock, void* msg, size_t how_many) {
     hErr(send(sock, msg, how_many, 0)-how_many, "nSEND");
 }
-void nsend(nsock sock, void* msg) {
-    nsendm(sock, msg, sizeof(msg));
-}
 void nsendll(nsock sock, uint64_t msg) {
-    nsend(sock, &msg);
+    nsend(sock, &msg, 8);
 }
 void nsendl(nsock sock, uint32_t msg) {
-    nsend(sock, &msg);
+    nsend(sock, &msg, 4);
 }
 void nsends(nsock sock, uint16_t msg) {
-    nsend(sock, &msg);
+    nsend(sock, &msg, 2);
 }
 void nsendc(nsock sock, uint8_t msg) {
-    nsend(sock, &msg);
+    nsend(sock, &msg, 1);
 }
 void nsendnt(nsock sock, struct ntime_t msg) {
-    nsend(sock, &msg.time);
-    nsend(sock, &msg.ntime);
+    nsend(sock, &msg.time, sizeof(msg.time));
+    nsend(sock, &msg.ntime, sizeof(msg.time));
 }
-void nrecvm(nsock sock, void* msg, size_t how_many) {
+void nrecv(nsock sock, void* msg, size_t how_many) {
     hErr(recv(sock, msg, how_many, 0)-how_many, "cRECV");
-}
-void nrecv(nsock sock, void* msg) {
-    nrecvm(sock, msg, sizeof(msg));
 }
 uint64_t nrecvll(nsock sock) {
     uint64_t r;
-    nrecv(sock, &r);
+    nrecv(sock, &r, 8);
     return r;
 }
 uint32_t nrecvl(nsock sock) {
     uint32_t r;
-    nrecv(sock, &r);
+    nrecv(sock, &r, 4);
     return r;
 }
 uint16_t nrecvs(nsock sock) {
     uint16_t r;
-    nrecv(sock, &r);
+    nrecv(sock, &r, 2);
     return r;
 }
 uint8_t nrecvc(nsock sock) {
     uint8_t r;
-    nrecv(sock, &r);
+    nrecv(sock, &r, 1);
     return r;
 }
 struct ntime_t nrecvnt(nsock sock) {
     struct ntime_t r;
-    nrecv(sock, &r.time);
-    nrecv(sock, &r.ntime);
+    nrecv(sock, &r.time, sizeof(r.time));
+    nrecv(sock, &r.ntime, sizeof(r.ntime));
     return r;
 }
 struct ntime_t ntime() {
@@ -134,45 +128,28 @@ void nclose(nsock sock) {
 }
 
 void client() {
+    ninit();
     nsock sock = nsocket();
     nconnect(sock, "localhost", PORT);
-    char bufor[16] = "r";
     nsendc(sock, 'r');
-    do {
-        hErr(recv(sock, bufor, 1, 0)-1, "cRECV");
-        printf("%s\n", bufor);
-    }while(bufor[0]!='R');
-    struct timespec tx={0,0}, tz={0,0};
-    struct timeb txs, ty;
-    bufor[0] = 'p';
-    clock_gettime(CLOCK_MONOTONIC, &tx);
-    hErr(ftime(&txs), "cFTIME");
-    hErr(send(sock, bufor, 1, 0)-1, "cSEND");
-    do {
-        hErr(recv(sock, bufor, 1, 0)-1, "cRECV");
-        printf("%s\n", bufor);
-    }while(bufor[0]!='P');
-    clock_gettime(CLOCK_MONOTONIC, &tz);
-    bufor[0] = 't';
-    hErr(send(sock, bufor, 1, 0)-1, "cSEND");
-    do {
-        hErr(recv(sock, bufor, 1, 0)-1, "cRECV");
-        printf("%s\n", bufor);
-    }while(bufor[0]!='T');
-    hErr(recv(sock, &ty.time, sizeof(time_t), 0)-sizeof(time_t), "time_t cRECV");
-    hErr(recv(sock, &ty.millitm, sizeof(unsigned short), 0)-sizeof(unsigned short), "ntime_t cRECV");
-    bufor[0] = 'c';
-    hErr(send(sock, bufor, 1, 0)-1, "cSEND");
-    do {
-        hErr(recv(sock, bufor, 1, 0)-1, "cRECV");
-        printf("%s\n", bufor);
-    }while(bufor[0]!='C');
-    hErr(shutdown(sock, SHUT_RDWR), "cSHUTDOWN");
-    double d = ((tz.tv_sec-tx.tv_sec)+1e-9*(tz.tv_nsec-tx.tv_nsec))/2;
-    double lty = (txs.time+1e-9*txs.millitm)+d;
-    double rty = (ty.time+1e-9*ty.millitm);
+    while(nrecvc(sock)!='R');
+    struct ntime_t tx, ty, tz;
+    tx = ntime();
+    nsendc(sock, 'p');
+    while(nrecvc(sock)!='P');
+    tz = ntime();
+    nsendc(sock, 't');
+    while(nrecvc(sock)!='T');
+    ty = nrecvnt(sock);
+    nsendc(sock, 'c');
+    while(nrecvc(sock)!='C');
+    nclose(sock);
+    ncleanup();
+    double d = diffdoublent(tx, tz)/2;
+    double lty = doublent(tx)+d;
+    double rty = doublent(ty);
     double delta = rty - lty;
-    printf("tx = %li.%09li\ntz = %li.%09li\ndelta = %.6f +-%.6f ms\n", tx.tv_sec, tx.tv_nsec, tz.tv_sec, tz.tv_nsec, delta*1000, d*1000);
+    printf("tx = %li.%09li\nty = %li.%09li\ntz = %li.%09li\ndelta = %.6f +-%.6f ms\n", tx.time, tx.ntime, ty.time, ty.ntime, tz.time, tz.ntime, delta*1000, d*1000);
 }
 
 void server() {
@@ -200,7 +177,8 @@ void server() {
             hErr(send(csock, bufor, 1, 0)-1, "sSEND");
             if(bufor[0]=='T') {
                 hErr(send(csock, &ty.time, sizeof(time_t), 0)-sizeof(time_t), "time_t sSEND");
-                hErr(send(csock, &ty.millitm, sizeof(unsigned short), 0)-sizeof(unsigned short), "ntime_t sSEND");
+                long t = ty.millitm;
+                hErr(send(csock, &t, sizeof(t), 0)-sizeof(t), "ntime_t sSEND");
             }
             printf("%s\n", bufor);
         }while(bufor[0]!='C');
