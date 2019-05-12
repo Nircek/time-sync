@@ -22,6 +22,36 @@ int hErr(int code, const char* msg) { //handle error
     return code;
 }
 
+typedef int nsock;
+struct ntime_t {
+    uint64_t time;
+    int32_t ntime;
+};
+
+void ninit() {}
+void ncleanup() {}
+nsock nsocket() {}
+void nconnect(nsock sock, const char *name) {}
+void nsend(nsock sock, void* msg, size_t how_many) {}
+void nrecv(nsock sock, void* msg, size_t how_many) {}
+void nsendll(nsock sock, uint64_t msg) {}
+void nsendl(nsock sock, uint32_t msg) {}
+void nsends(nsock sock, uint16_t msg) {}
+void nsendc(nsock sock, uint8_t msg) {}
+void nsendnt(nsock sock, struct ntime_t msg) {}
+uint64_t nrecvll(nsock sock) {}
+uint32_t nrecvl(nsock sock) {}
+uint16_t nrecvs(nsock sock) {}
+uint8_t nrecvc(nsock sock) {}
+struct ntime_t nrecvnt(nsock sock) {}
+struct ntime_t ntime() {}
+double doublent(struct ntime_t nt) {}
+double diffdoublent(struct ntime_t nt1, struct ntime_t nt2) {}
+void nbind(nsock sock, short port) {}
+void nlisten(nsock sock) {}
+nsock naccept(nsock sock) {}
+void nclose(nsock sock) {}
+
 void client() {
     struct hostent *he = gethostbyname("localhost");
     unsigned short port = PORT;
