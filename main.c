@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -22,8 +23,10 @@ int hErr(int code, const char* msg) { //handle error
 }
 
 void client() {
-    const char *host = "localhost";
+    struct hostent *he = gethostbyname("localhost");
     unsigned short port = PORT;
+    hErr(he==NULL?-1:0, "GETHOSTBYNAME");
+    const char *host = inet_ntoa(**(struct in_addr**)he->h_addr_list);
     struct sockaddr_in addr = {};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
@@ -33,7 +36,7 @@ void client() {
     char bufor[16] = "r";
     hErr(send(sock, bufor, 1, 0)-1, "cSEND");
     do {
-        hErr(recv(sock, bufor, sizeof(bufor), 0)-1, "cRECV");
+        hErr(recv(sock, bufor, 1, 0)-1, "cRECV");
         printf("%s\n", bufor);
     }while(bufor[0]!='R');
     struct timespec tx={0,0}, tz={0,0};
@@ -43,14 +46,14 @@ void client() {
     hErr(ftime(&txs), "cFTIME");
     hErr(send(sock, bufor, 1, 0)-1, "cSEND");
     do {
-        hErr(recv(sock, bufor, sizeof(bufor), 0)-1, "cRECV");
+        hErr(recv(sock, bufor, 1, 0)-1, "cRECV");
         printf("%s\n", bufor);
     }while(bufor[0]!='P');
     clock_gettime(CLOCK_MONOTONIC, &tz);
     bufor[0] = 't';
     hErr(send(sock, bufor, 1, 0)-1, "cSEND");
     do {
-        hErr(recv(sock, bufor, sizeof(bufor), 0)-1, "cRECV");
+        hErr(recv(sock, bufor, 1, 0)-1, "cRECV");
         printf("%s\n", bufor);
     }while(bufor[0]!='T');
     hErr(recv(sock, &ty.time, sizeof(time_t), 0)-sizeof(time_t), "time_t cRECV");
@@ -58,7 +61,7 @@ void client() {
     bufor[0] = 'c';
     hErr(send(sock, bufor, 1, 0)-1, "cSEND");
     do {
-        hErr(recv(sock, bufor, sizeof(bufor), 0)-1, "cRECV");
+        hErr(recv(sock, bufor, 1, 0)-1, "cRECV");
         printf("%s\n", bufor);
     }while(bufor[0]!='C');
     hErr(shutdown(sock, SHUT_RDWR), "cSHUTDOWN");
@@ -84,10 +87,10 @@ void server() {
         socklen_t len;
         struct sockaddr_in client = {};
         int csock = hErr(accept(sock, (struct sockaddr*) &client, &len), "sACCEPT");
-        char bufor[16];
+        char bufor[1];
         struct timeb ty;
         do {
-            hErr(recv(csock, bufor, sizeof( bufor ), 0)-1, "sRECV");
+            hErr(recv(csock, bufor, 1, 0)-1, "sRECV");
             if(bufor[0]=='p')
                 ftime(&ty);
             bufor[0] += 'A' - 'a';
