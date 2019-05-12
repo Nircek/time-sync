@@ -60,11 +60,11 @@ void nsendc(nsock sock, uint8_t msg) {
     nsend(sock, &msg, 1);
 }
 void nsendnt(nsock sock, struct ntime_t msg) {
-    nsend(sock, &msg.time, sizeof(msg.time));
-    nsend(sock, &msg.ntime, sizeof(msg.time));
+    nsendll(sock, msg.time);
+    nsendl(sock, msg.ntime);
 }
 void nrecv(nsock sock, void* msg, size_t how_many) {
-    hErr(recv(sock, msg, how_many, 0)-how_many, "cRECV");
+    hErr(recv(sock, msg, how_many, 0)-how_many, "nRECV");
 }
 uint64_t nrecvll(nsock sock) {
     uint64_t r;
@@ -88,12 +88,12 @@ uint8_t nrecvc(nsock sock) {
 }
 struct ntime_t nrecvnt(nsock sock) {
     struct ntime_t r;
-    nrecv(sock, &r.time, sizeof(r.time));
-    nrecv(sock, &r.ntime, sizeof(r.ntime));
+    r.time = nrecvll(sock);
+    r.ntime = nrecvl(sock);
     return r;
 }
 struct ntime_t ntime() {
-    struct timespec ts={0,0};
+    struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     struct ntime_t r;
     r.time = ts.tv_sec;
@@ -128,21 +128,20 @@ void nclose(nsock sock) {
 }
 
 void client() {
-    ninit();
     nsock sock = nsocket();
     nconnect(sock, "localhost", PORT);
     nsendc(sock, 'r');
-    while(nrecvc(sock)!='R');
+    while(nrecvc(sock) != 'R');
     struct ntime_t tx, ty, tz;
     tx = ntime();
     nsendc(sock, 'p');
-    while(nrecvc(sock)!='P');
+    while(nrecvc(sock) != 'P');
     tz = ntime();
     nsendc(sock, 't');
-    while(nrecvc(sock)!='T');
+    while(nrecvc(sock) != 'T');
     ty = nrecvnt(sock);
     nsendc(sock, 'c');
-    while(nrecvc(sock)!='C');
+    while(nrecvc(sock) != 'C');
     nclose(sock);
     ncleanup();
     double d = diffdoublent(tx, tz)/2;
@@ -153,46 +152,36 @@ void client() {
 }
 
 void server() {
-    const short port = PORT;
-    struct sockaddr_in addr;
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htons( INADDR_ANY );
-    const int sock = hErr(socket(AF_INET, SOCK_STREAM, 0), "sSOCKET");
-    int true = 1;
-    setsockopt(sock,SOL_SOCKET,SO_REUSEADDR,&true,sizeof(int));
-    hErr(bind(sock, (struct sockaddr*) &addr, sizeof(addr)), "sBIND");
-    hErr(listen(sock, MAX_CONNECTION), "sLISTEN");
+    nsock sock = nsocket();
+    nbind(sock, PORT);
+    nlisten(sock, MAX_CONNECTION);
     while(1) {
-        socklen_t len;
-        struct sockaddr_in client = {};
-        int csock = hErr(accept(sock, (struct sockaddr*) &client, &len), "sACCEPT");
-        char bufor[1];
-        struct timeb ty;
+        nsock csock = naccept(sock);
+        struct ntime_t last = ntime();
+        char b;
         do {
-            hErr(recv(csock, bufor, 1, 0)-1, "sRECV");
-            if(bufor[0]=='p')
-                ftime(&ty);
-            bufor[0] += 'A' - 'a';
-            hErr(send(csock, bufor, 1, 0)-1, "sSEND");
-            if(bufor[0]=='T') {
-                hErr(send(csock, &ty.time, sizeof(time_t), 0)-sizeof(time_t), "time_t sSEND");
-                long t = ty.millitm;
-                hErr(send(csock, &t, sizeof(t), 0)-sizeof(t), "ntime_t sSEND");
-            }
-            printf("%s\n", bufor);
-        }while(bufor[0]!='C');
-        hErr(shutdown(csock, SHUT_RDWR), "sSHUTDOWN");
+            b = nrecvc(csock);
+            if(b == 'p')
+                last = ntime();
+            b += 'A' - 'a';
+            nsendc(csock, b);
+            if(b == 'T')
+                nsendnt(csock, last);
+            printf("%c\n", b);
+        }while(b!='C');
+        nclose(csock);
     }
-    hErr(shutdown(sock, SHUT_RDWR), "sSHUTDOWN");
+    nclose(sock);
 }
 
 int main(int argc, char* argv[]) {
+    ninit();
     printf("Type 'c' to run client or 's' to run server: ");
     char c = getchar();
     wait:
     if(c=='c') client();
     else if(c=='s')server();
     else goto wait;
+    nclose();
     return 0;
 }
