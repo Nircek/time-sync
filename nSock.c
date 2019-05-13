@@ -55,11 +55,15 @@ int hErr(int code, const char* msg) { //handle error
 }
 
 void ninit() {
+    #ifdef _WIN32
     WSADATA wsaData;
     hErr(ERR_SIGN*WSAStartup(MAKEWORD(2,2), &wsaData), "WSASTARTUP");
+    #endif
 }
 void ncleanup() {
+    #ifdef _WIN32
     WSACleanup();
+    #endif
 }
 nsock nsocket() {
     return hErr(socket(AF_INET, SOCK_STREAM, 0), "nSOCKET");
