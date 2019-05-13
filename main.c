@@ -26,7 +26,7 @@ void client() {
     double lty = doublent(tx)+d;
     double rty = doublent(ty);
     double delta = rty - lty;
-    printf("tx = %li.%09li\nty = %li.%09li\ntz = %li.%09li\ndelta = %.6f +-%.6f ms\n", tx.time, tx.ntime, ty.time, ty.ntime, tz.time, tz.ntime, delta*1000, d*1000);
+    printf("tx = %llu.%09lu\nty = %llu.%09lu\ntz = %llu.%09lu\ndelta = %.6f +-%.6f ms\n", tx.time, tx.ntime, ty.time, ty.ntime, tz.time, tz.ntime, delta*1000, d*1000);
 }
 
 void server() {

@@ -1,12 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/timeb.h>
+#include <stdint.h>
 #include <time.h>
 
 /*

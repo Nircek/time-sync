@@ -1,5 +1,16 @@
 #include "nSock.h"
 
+#ifndef _WIN32
+#include <netdb.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#else
+#include <winsock2.h>
+#include <Ws2tcpip.h>
+#endif
 /*
 MIT License
 
@@ -24,9 +35,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+#ifdef _WIN32
+#define ERR_SIGN (-1)
+#define ERRNO WSAGetLastError()
+#else
+#define ERR_SIGN 1
+#define ERRNO -300
+#endif
+
 int hErr(int code, const char* msg) { //handle error
-    if(code<=-1) {
-        fprintf(stderr, "[ERR] %s %i\n", msg, code);
+    if(code<0) {
+        fprintf(stderr, "[ERR] %s %i %i\n", msg, code, ERRNO);
+        ncleanup();
         exit(1);
     } else {
         printf("[OK] %s\n", msg);
@@ -34,8 +54,13 @@ int hErr(int code, const char* msg) { //handle error
     return code;
 }
 
-void ninit() {}
-void ncleanup() {}
+void ninit() {
+    WSADATA wsaData;
+    hErr(ERR_SIGN*WSAStartup(MAKEWORD(2,2), &wsaData), "WSASTARTUP");
+}
+void ncleanup() {
+    WSACleanup();
+}
 nsock nsocket() {
     return hErr(socket(AF_INET, SOCK_STREAM, 0), "nSOCKET");
 }
@@ -46,9 +71,12 @@ void nconnect(nsock sock, const char *name, unsigned short port) {
     struct sockaddr_in addr = {};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
+    #ifndef _WIN32
     inet_pton(AF_INET, host, &addr.sin_addr);
-    hErr(connect(sock, (struct sockaddr*)&addr, sizeof(addr)), "nCONNECT");
-    
+    #else
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    #endif
+    hErr(ERR_SIGN*connect(sock, (struct sockaddr*)&addr, sizeof(addr)), "nCONNECT");
 }
 void nsend(nsock sock, void* msg, size_t how_many) {
     hErr(send(sock, msg, how_many, 0)-how_many, "nSEND");
@@ -99,11 +127,22 @@ struct ntime_t nrecvnt(nsock sock) {
     return r;
 }
 struct ntime_t ntime() {
+    struct ntime_t r;
+    #ifndef _WIN32
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    struct ntime_t r;
     r.time = ts.tv_sec;
     r.ntime = ts.tv_nsec;
+    #else
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    uint64_t ticks = ft.dwHighDateTime;
+    ticks <<= 32;
+    ticks |= ft.dwLowDateTime;
+    ticks -= 0x019DB1DED53E8000;
+    r.time = (uint64_t)ticks/10000000;
+    r.ntime = (uint32_t)(ticks%10000000)*100;
+    #endif
     return r;
 }
 double doublent(struct ntime_t nt) {
@@ -117,18 +156,28 @@ void nbind(nsock sock, short port) {
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     addr.sin_addr.s_addr = htons( INADDR_ANY );
+    #ifndef _WIN32
     int true = 1;
+    #else
+    char true = 1;
+    #endif
     setsockopt(sock,SOL_SOCKET,SO_REUSEADDR,&true,sizeof(int));
-    hErr(bind(sock, (struct sockaddr*) &addr, sizeof(addr)), "nBIND");
+    hErr(ERR_SIGN*bind(sock, (struct sockaddr*) &addr, sizeof(addr)), "nBIND");
 }
 void nlisten(nsock sock, int backlog) {
-    hErr(listen(sock, backlog), "nLISTEN");
+    hErr(ERR_SIGN*listen(sock, backlog), "nLISTEN");
 }
 nsock naccept(nsock sock) {
-        socklen_t len;
-        struct sockaddr_in client = {};
-        return hErr(accept(sock, (struct sockaddr*) &client, &len), "nACCEPT");
+    //socklen_t len;
+    //struct sockaddr_in client = {};
+    return hErr(accept(sock, NULL, NULL), "nACCEPT");
 }
 void nclose(nsock sock) {
-    hErr(shutdown(sock, SHUT_RDWR), "nSHUTDOWN");
+    int how;
+    #ifdef _WIN32
+    how = SD_BOTH;
+    #else
+    how = SHUT_RDWR;
+    #endif
+    hErr(ERR_SIGN*shutdown(sock, how), "nSHUTDOWN");
 }
