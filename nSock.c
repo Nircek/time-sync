@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <errno.h>
 #else
 #include <winsock2.h>
 #include <Ws2tcpip.h>
@@ -40,7 +41,7 @@ SOFTWARE.
 #define ERRNO WSAGetLastError()
 #else
 #define ERR_SIGN 1
-#define ERRNO -300
+#define ERRNO errno
 #endif
 
 int hErr(int code, const char* msg) { //handle error
